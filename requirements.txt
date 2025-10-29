@@ -7,3 +7,4 @@ google-ai-generativelanguage==0.6.10
 scikit-learn==1.4.1.post1
 gdown==4.6.5
 python-dotenv==1.0.1
+gunicorn==21.0.0
