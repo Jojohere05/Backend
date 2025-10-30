@@ -202,7 +202,7 @@ Provide a detailed explanation describing linguistic cues, tone, detail level, a
 Structure your response clearly with bullet points or numbered reasons, and conclude with an overall assessment.
 """
 
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        model = genai.GenerativeModel("gemini-2.5-pro")
         response = model.generate_content(prompt)
         
         print("✅ Explanation generated successfully")
