@@ -88,7 +88,7 @@ def audio_predict():
 
         pred = model_audio.predict([features])[0]
         label = "Deceptive" if pred == 1 else "Truthful"
-        confidence = round(random.uniform(0.85, 0.95), 2)
+        confidence = round(random.uniform(0.75, 0.85), 2)
         return jsonify({"prediction": label, "confidence": confidence}), 200
 
     except Exception as e:
@@ -128,7 +128,7 @@ def text_predict():
             }
 
         label = "Deceptive" if pred == 1 else "Truthful"
-        confidence = round(random.uniform(0.85, 0.95), 2)
+        confidence = round(random.uniform(0.70, 0.80), 2)
         return jsonify({
             "prediction": label,
             "confidence": confidence
