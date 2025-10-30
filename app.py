@@ -8,22 +8,20 @@ import tempfile
 import os
 import traceback
 import google.genai as genai
-# REMOVE gdown import, since you don't need Google Drive downloads anymore
 import random
+
 # ----------------- Flask App Setup -----------------
 app = Flask(__name__)
+
+# FIXED: Use wildcard for all origins (simplest and most reliable)
 CORS(app, resources={
     r"/*": {
-        "origins": [
-            "https://*.vercel.app",  # All Vercel deployments
-            "http://localhost:3000",  # Local development
-            "http://localhost:5173",  # Vite local development
-        ],
+        "origins": "*",  # Allow all origins
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
     }
 })
+
 load_dotenv()
 
 # ----------------- Model Folder Paths -----------------
@@ -47,10 +45,13 @@ except Exception as e:
     traceback.print_exc()
     model_audio, model_text = None, None
 
-# Keep the rest of your endpoints and functions unchanged
-
 # ----------------- Gemini Configuration -----------------
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+try:
+    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+    print("✅ Gemini client initialized")
+except Exception as e:
+    print(f"⚠️ Warning: Gemini client initialization failed: {e}")
+    client = None
 
 # ----------------- Audio Feature Extraction -----------------
 def extract_audio_features(file_path):
@@ -64,8 +65,12 @@ def extract_audio_features(file_path):
     return mfcc_mean
 
 # ----------------- Audio Prediction Endpoint -----------------
-@app.route("/audio-predict", methods=["POST"])
+@app.route("/audio-predict", methods=["POST", "OPTIONS"])
 def audio_predict():
+    # Handle preflight request
+    if request.method == "OPTIONS":
+        return "", 204
+    
     try:
         if model_audio is None:
             return jsonify({"error": "Audio model not loaded"}), 500
@@ -84,17 +89,19 @@ def audio_predict():
         pred = model_audio.predict([features])[0]
         label = "Deceptive" if pred == 1 else "Truthful"
         confidence = round(random.uniform(0.85, 0.95), 2)
-        return jsonify({"prediction": label, "confidence": confidence})
-
-    
+        return jsonify({"prediction": label, "confidence": confidence}), 200
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 # ----------------- Text Prediction Endpoint -----------------
-@app.route("/predict", methods=["POST"])
+@app.route("/predict", methods=["POST", "OPTIONS"])
 def text_predict():
+    # Handle preflight request
+    if request.method == "OPTIONS":
+        return "", 204
+    
     try:
         if model_text is None:
             return jsonify({"error": "Text model not loaded"}), 500
@@ -125,17 +132,23 @@ def text_predict():
         return jsonify({
             "prediction": label,
             "confidence": confidence
-        })
-
+        }), 200
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 # ----------------- Explanation Endpoint (Gemini 2.5 Flash) -----------------
-@app.route("/explain", methods=["POST"])
+@app.route("/explain", methods=["POST", "OPTIONS"])
 def explain():
+    # Handle preflight request
+    if request.method == "OPTIONS":
+        return "", 204
+    
     try:
+        if client is None:
+            return jsonify({"error": "Gemini API not configured"}), 500
+        
         data = request.get_json()
         if not data or "transcript" not in data:
             return jsonify({"error": "No transcript provided"}), 400
@@ -156,11 +169,21 @@ Structure your response clearly with bullet points or numbered reasons, and conc
 
         model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
-        return jsonify({"explanation": response.text})
+        return jsonify({"explanation": response.text}), 200
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+# ----------------- Home Endpoint (REQUIRED!) -----------------
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "status": "Backend active",
+        "message": "Deception Detection API",
+        "version": "1.0",
+        "endpoints": ["/health", "/predict", "/audio-predict", "/explain"]
+    }), 200
 
 # ----------------- Health Check -----------------
 @app.route("/health", methods=["GET"])
@@ -183,7 +206,9 @@ def not_found(e):
 def internal_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
-
 # ----------------- Run Flask -----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # FIXED: Use PORT environment variable for Render
+    port = int(os.environ.get("PORT", 5000))
+    print(f"🚀 Starting server on port {port}")
+    app.run(host="0.0.0.0", port=port, debug=False)  # debug=False for production
