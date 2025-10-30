@@ -9,7 +9,8 @@ import numpy as np
 import librosa
 import tempfile
 import traceback
-import google.generativeai as genai
+import google.genai as genai
+from google.genai import types
 import random
 
 # ----------------- Flask App Setup -----------------
@@ -26,7 +27,6 @@ CORS(app, resources={
     }
 })
 
-# Add after_request handler for additional CORS headers
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -55,75 +55,58 @@ except Exception as e:
     traceback.print_exc()
     model_audio, model_text = None, None
 
-# ----------------- Gemini Configuration (OLD SDK) -----------------
+# ----------------- Initialize Gemini (New GenAI SDK) -----------------
 try:
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if api_key:
-        genai.configure(api_key=api_key)
-        print("✅ Gemini configured with API key")
+        client = genai.Client(api_key=api_key)
+        print("✅ Gemini client initialized with API key")
     else:
-        print("⚠️ Warning: GOOGLE_API_KEY not found")
+        client = None
+        print("⚠️ Warning: GEMINI_API_KEY or GOOGLE_API_KEY not found")
 except Exception as e:
-    print(f"⚠️ Warning: Gemini configuration failed: {e}")
+    print(f"⚠️ Warning: Gemini client initialization failed: {e}")
+    client = None
 
 # ----------------- Audio Feature Extraction -----------------
 def extract_audio_features(file_path):
     try:
         y, sr = librosa.load(file_path, sr=16000, mono=True)
-        
-        # Normalize
         if np.max(np.abs(y)) > 0:
             y = y / np.max(np.abs(y))
-        
-        # Pad if too short
         if len(y) < 2048:
             y = np.pad(y, (0, 2048 - len(y)), mode="reflect")
-
-        # Extract MFCC with error handling
         mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=2048, hop_length=512)
         mfcc_mean = np.mean(mfcc, axis=1)
-        
         return mfcc_mean
     except Exception as e:
         print(f"Error extracting features: {e}")
         traceback.print_exc()
-        # Return dummy features as fallback
         return np.zeros(13)
 
 # ----------------- Audio Prediction Endpoint -----------------
 @app.route("/audio-predict", methods=["POST", "OPTIONS"])
 def audio_predict():
-    # Handle preflight request
     if request.method == "OPTIONS":
         return "", 204
-    
     try:
         print("🎤 Audio prediction request received")
-        
         if model_audio is None:
             return jsonify({"error": "Audio model not loaded"}), 500
-
         if "file" not in request.files:
             return jsonify({"error": "No file uploaded"}), 400
-
         audio_file = request.files["file"]
         print(f"📁 Processing file: {audio_file.filename}")
-        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
             temp_path = temp_audio.name
             audio_file.save(temp_path)
-
         features = extract_audio_features(temp_path)
         os.remove(temp_path)
-
         pred = model_audio.predict([features])[0]
         label = "Deceptive" if pred == 1 else "Truthful"
-        confidence = round(random.uniform(0.60, 0.75), 2)  # 68% accuracy range
-        
+        confidence = round(random.uniform(0.60, 0.75), 2)
         print(f"✅ Prediction: {label} ({confidence})")
-        
         return jsonify({"prediction": label, "confidence": confidence}), 200
-
     except Exception as e:
         print(f"❌ Error in audio prediction: {e}")
         traceback.print_exc()
@@ -132,53 +115,39 @@ def audio_predict():
 # ----------------- Text Prediction Endpoint -----------------
 @app.route("/predict", methods=["POST", "OPTIONS"])
 def text_predict():
-    # Handle preflight request
     if request.method == "OPTIONS":
         return "", 204
-    
     try:
         print("📝 Text prediction request received")
-        
         if model_text is None:
             return jsonify({"error": "Text model not loaded"}), 500
-
         data = request.get_json()
         if not data or "text" not in data:
             return jsonify({"error": "No text provided"}), 400
-
         text = data["text"]
         print(f"📄 Analyzing text: {text[:50]}...")
-        
         pred = model_text.predict([text])[0]
         label = "Deceptive" if pred == 1 else "Truthful"
-        confidence = round(random.uniform(0.55, 0.68), 2)  # 60% accuracy range
-        
+        confidence = round(random.uniform(0.55, 0.68), 2)
         print(f"✅ Prediction: {label} ({confidence})")
-        
-        return jsonify({
-            "prediction": label,
-            "confidence": confidence
-        }), 200
-
+        return jsonify({"prediction": label, "confidence": confidence}), 200
     except Exception as e:
         print(f"❌ Error in text prediction: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ----------------- Explanation Endpoint (Gemini - OLD SDK) -----------------
+# ----------------- Explanation Endpoint (New GenAI SDK) -----------------
 @app.route("/explain", methods=["POST", "OPTIONS"])
 def explain():
-    # Handle preflight request
     if request.method == "OPTIONS":
         return "", 204
-    
     try:
         print("🤖 Explanation request received")
-        
+        if client is None:
+            return jsonify({"error": "Gemini client not initialized"}), 500
         data = request.get_json()
         if not data or "transcript" not in data:
             return jsonify({"error": "No transcript provided"}), 400
-
         transcript = data["transcript"]
         print(f"💭 Generating explanation for: {transcript[:50]}...")
 
@@ -194,12 +163,15 @@ Provide a detailed explanation describing linguistic cues, tone, detail level, a
 Structure your response clearly with bullet points or numbered reasons, and conclude with an overall assessment.
 """
 
-        # Using OLD SDK style from your working code
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
-        response = model.generate_content(prompt)
-        
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_budget=-1)  # dynamic thinking enabled
+            )
+        )
+
         print("✅ Explanation generated successfully")
-        
         return jsonify({"explanation": response.text}), 200
 
     except Exception as e:
@@ -225,7 +197,7 @@ def health_check():
         "models_loaded": {
             "audio": model_audio is not None,
             "text": model_text is not None,
-            "gemini": os.getenv("GOOGLE_API_KEY") is not None
+            "gemini": client is not None
         }
     }), 200
 
