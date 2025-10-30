@@ -2,7 +2,6 @@ import os
 os.environ['NUMBA_CACHE_DIR'] = '/tmp'
 os.environ['NUMBA_DISABLE_JIT'] = '1'
 
-from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import joblib
@@ -10,7 +9,7 @@ import numpy as np
 import librosa
 import tempfile
 import traceback
-import google.genai as genai
+import google.generativeai as genai
 import random
 
 # ----------------- Flask App Setup -----------------
@@ -35,8 +34,6 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
-load_dotenv()
-
 # ----------------- Model Folder Paths -----------------
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 MODEL_AUDIO_PATH = os.path.join(MODEL_DIR, "deception_logistic_regression_model.pkl")
@@ -58,18 +55,16 @@ except Exception as e:
     traceback.print_exc()
     model_audio, model_text = None, None
 
-# ----------------- Gemini Configuration -----------------
+# ----------------- Gemini Configuration (OLD SDK) -----------------
 try:
     api_key = os.getenv("GOOGLE_API_KEY")
     if api_key:
-        client = genai.Client(api_key=api_key)
-        print("✅ Gemini client initialized")
+        genai.configure(api_key=api_key)
+        print("✅ Gemini configured with API key")
     else:
         print("⚠️ Warning: GOOGLE_API_KEY not found")
-        client = None
 except Exception as e:
-    print(f"⚠️ Warning: Gemini client initialization failed: {e}")
-    client = None
+    print(f"⚠️ Warning: Gemini configuration failed: {e}")
 
 # ----------------- Audio Feature Extraction -----------------
 def extract_audio_features(file_path):
@@ -170,7 +165,7 @@ def text_predict():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ----------------- Explanation Endpoint (Gemini 2.5 Flash) -----------------
+# ----------------- Explanation Endpoint (Gemini - OLD SDK) -----------------
 @app.route("/explain", methods=["POST", "OPTIONS"])
 def explain():
     # Handle preflight request
@@ -179,9 +174,6 @@ def explain():
     
     try:
         print("🤖 Explanation request received")
-        
-        if client is None:
-            return jsonify({"error": "Gemini API not configured"}), 500
         
         data = request.get_json()
         if not data or "transcript" not in data:
@@ -202,7 +194,8 @@ Provide a detailed explanation describing linguistic cues, tone, detail level, a
 Structure your response clearly with bullet points or numbered reasons, and conclude with an overall assessment.
 """
 
-        model = genai.GenerativeModel("gemini-2.5-pro")
+        # Using OLD SDK style from your working code
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
         response = model.generate_content(prompt)
         
         print("✅ Explanation generated successfully")
@@ -214,7 +207,7 @@ Structure your response clearly with bullet points or numbered reasons, and conc
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ----------------- Home Endpoint (REQUIRED!) -----------------
+# ----------------- Home Endpoint -----------------
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
@@ -232,7 +225,7 @@ def health_check():
         "models_loaded": {
             "audio": model_audio is not None,
             "text": model_text is not None,
-            "gemini": client is not None
+            "gemini": os.getenv("GOOGLE_API_KEY") is not None
         }
     }), 200
 
