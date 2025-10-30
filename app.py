@@ -163,9 +163,26 @@ Structure your response clearly with bullet points or numbered reasons, and conc
         return jsonify({"error": str(e)}), 500
 
 # ----------------- Health Check -----------------
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({"status": "Backend active"})
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "models_loaded": {
+            "audio": model_audio is not None,
+            "text": model_text is not None,
+            "gemini": client is not None
+        }
+    }), 200
+
+# ----------------- Error Handlers -----------------
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Endpoint not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({"error": "Internal server error"}), 500
+
 
 # ----------------- Run Flask -----------------
 if __name__ == "__main__":
