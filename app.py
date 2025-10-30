@@ -12,7 +12,18 @@ import google.genai as genai
 import random
 # ----------------- Flask App Setup -----------------
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://*.vercel.app",  # All Vercel deployments
+            "http://localhost:3000",  # Local development
+            "http://localhost:5173",  # Vite local development
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 load_dotenv()
 
 # ----------------- Model Folder Paths -----------------
