@@ -161,23 +161,31 @@ def text_predict():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-# ----------------- Explanation Endpoint (New GenAI SDK) -----------------
+# ----------------- Explanation Endpoint (Using gemini-2.5-pro) -----------------
+# ----------------- Explanation Endpoint (Using gemini-2.0-flash-exp) -----------------
 @app.route("/explain", methods=["POST", "OPTIONS"])
 def explain():
     if request.method == "OPTIONS":
         return "", 204
     try:
         print("🤖 Explanation request received")
+        
         if client is None:
+            print("❌ Gemini client is None")
             return jsonify({"error": "Gemini client not initialized"}), 500
+        
         data = request.get_json()
+        print(f"📥 Received data: {data}")
+        
         if not data or "transcript" not in data or "prediction" not in data:
+            print(f"❌ Missing required fields")
             return jsonify({"error": "Transcript or prediction not provided"}), 400
+        
         transcript = data["transcript"]
         prediction = data["prediction"]
-        print(f"💭 Generating explanation for: {transcript[:50]} with prediction: {prediction}")
+        print(f"💭 Generating explanation for: {transcript[:50]}... with prediction: {prediction}")
 
-        # Make Gemini explanation reflect model prediction by customizing prompt
+        # Customized prompt that incorporates the model's prediction
         prompt = f"""
 You are a linguistic and psychological analysis expert tasked with evaluating human statements for truthfulness or deception.
 
@@ -192,22 +200,21 @@ Provide a detailed explanation describing linguistic cues, tone, detail level, a
 Structure your response clearly with bullet points or numbered reasons, and conclude with an overall assessment supporting that it is {prediction}.
 """
 
+        print("🔄 Calling Gemini API...")
+        # Using new SDK client pattern
         response = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_budget=-1)  # dynamic thinking enabled
-            )
+            model="gemini-2.0-flash-exp",
+            contents=prompt
         )
 
         print("✅ Explanation generated successfully")
+        print(f"📤 Response text length: {len(response.text)}")
         return jsonify({"explanation": response.text}), 200
 
     except Exception as e:
         print(f"❌ Error in explanation: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 
 # ----------------- Home Endpoint -----------------
 @app.route("/", methods=["GET"])
