@@ -171,11 +171,13 @@ def explain():
         if client is None:
             return jsonify({"error": "Gemini client not initialized"}), 500
         data = request.get_json()
-        if not data or "transcript" not in data:
-            return jsonify({"error": "No transcript provided"}), 400
+        if not data or "transcript" not in data or "prediction" not in data:
+            return jsonify({"error": "Transcript or prediction not provided"}), 400
         transcript = data["transcript"]
-        print(f"💭 Generating explanation for: {transcript[:50]}...")
+        prediction = data["prediction"]
+        print(f"💭 Generating explanation for: {transcript[:50]} with prediction: {prediction}")
 
+        # Make Gemini explanation reflect model prediction by customizing prompt
         prompt = f"""
 You are a linguistic and psychological analysis expert tasked with evaluating human statements for truthfulness or deception.
 
@@ -183,9 +185,11 @@ Analyze the following transcript carefully:
 
 '''{transcript}'''
 
-Provide a detailed explanation describing linguistic cues, tone, detail level, and logical consistency that indicate whether this statement is likely to be truthful or deceptive.
+The model has predicted this statement to be **{prediction}**.
 
-Structure your response clearly with bullet points or numbered reasons, and conclude with an overall assessment.
+Provide a detailed explanation describing linguistic cues, tone, detail level, and logical consistency that indicate why this statement is likely to be **{prediction}**.
+
+Structure your response clearly with bullet points or numbered reasons, and conclude with an overall assessment supporting that it is {prediction}.
 """
 
         response = client.models.generate_content(
@@ -203,6 +207,7 @@ Structure your response clearly with bullet points or numbered reasons, and conc
         print(f"❌ Error in explanation: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 # ----------------- Home Endpoint -----------------
 @app.route("/", methods=["GET"])
